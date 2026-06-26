@@ -274,3 +274,21 @@ def test_exclude_env_vars(monkeypatch):
                 uri,
                 exclude_env_vars=["GAZEBO_MODEL_PATH"],
             )
+
+
+def test_package_scheme_package_root_directory_resolution(monkeypatch):
+
+    clear_env_vars()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = pathlib.Path(temp_dir).resolve()
+        package_dir = temp_dir_path / "example_package"
+        package_dir.mkdir(parents=True, exist_ok=True)
+
+        monkeypatch.setenv("GZ_SIM_RESOURCE_PATH", str(temp_dir_path))
+
+        result = resolve_robotics_uri_py.resolve_robotics_uri(
+            "package://example_package"
+        )
+
+        assert result == package_dir
