@@ -1,0 +1,1 @@
+"""Example package that installs a cube URDF into share/."""

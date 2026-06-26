@@ -2,6 +2,7 @@ import argparse
 import os
 import pathlib
 import sys
+import sysconfig
 import warnings
 from typing import Union, Iterable
 from urllib.parse import urlparse
@@ -71,6 +72,50 @@ def get_search_paths_from_envs(env_list: Iterable[str]) -> list[pathlib.Path]:
     return existing_search_paths
 
 
+def get_default_search_paths(
+    exclude_python_prefix: bool = False,
+    exclude_env_vars: Union[list[str], None] = None,
+) -> list[pathlib.Path]:
+    exclude_env_vars = set(exclude_env_vars or [])
+    search_env_vars = [
+        env for env in SupportedEnvVars if env not in exclude_env_vars
+    ]
+    search_paths = get_search_paths_from_envs(search_env_vars)
+
+    if not exclude_python_prefix:
+        search_prefixes = {pathlib.Path(sys.prefix).resolve()}
+        sysconfig_data_prefix = sysconfig.get_path("data")
+
+        if sysconfig_data_prefix:
+            search_prefixes.add(pathlib.Path(sysconfig_data_prefix).resolve())
+
+        # Avoid adding duplicate paths when sys.prefix and sysconfig.get_path("data")
+        # map to the same location.
+        seen_paths = {path.resolve() for path in search_paths}
+
+        for prefix in search_prefixes:
+            search_path_candidates = [prefix / "share"]
+
+            # On Windows conda prefixes, data files are installed under
+            # <prefix>/Library/share rather than <prefix>/share.
+            if sys.platform == "win32":
+                search_path_candidates.append(prefix / "Library" / "share")
+
+            for candidate in search_path_candidates:
+                if not candidate.is_dir():
+                    continue
+
+                resolved_candidate = candidate.resolve()
+
+                if resolved_candidate in seen_paths:
+                    continue
+
+                seen_paths.add(resolved_candidate)
+                search_paths.append(resolved_candidate)
+
+    return search_paths
+
+
 def pathlist_list_to_string(path_list: Iterable[Union[str, pathlib.Path]]) -> str:
     return " ".join(str(path) for path in path_list)
 
@@ -81,7 +126,10 @@ def pathlist_list_to_string(path_list: Iterable[Union[str, pathlib.Path]]) -> st
 
 
 def resolve_robotics_uri(
-    uri: str, package_dirs: Union[list[str], None] = None
+    uri: str,
+    package_dirs: Union[list[str], None] = None,
+    exclude_python_prefix: bool = False,
+    exclude_env_vars: Union[list[str], None] = None,
 ) -> pathlib.Path:
     """
     Resolve a robotics URI to an absolute filename.
@@ -89,6 +137,9 @@ def resolve_robotics_uri(
     Args:
         uri: The URI to resolve.
         package_dirs: A list of additional paths to look for the file.
+        exclude_python_prefix: If True, do not search Python installation prefixes.
+        exclude_env_vars: Optional list of environment variable names to exclude from
+            the default search path list.
 
     Returns:
         The absolute filename corresponding to the URI.
@@ -156,7 +207,9 @@ def resolve_robotics_uri(
     model_filenames = []
 
     # Search the resource in the path from the env variables
-    for folder in set(get_search_paths_from_envs(SupportedEnvVars)) | {
+    for folder in set(
+        get_default_search_paths(exclude_python_prefix, exclude_env_vars)
+    ) | {
         path
         for directory in package_dirs
         if directory and (path := pathlib.Path(directory).expanduser()).exists()
@@ -202,11 +255,30 @@ def main():
         help="Additional paths to look for the file",
         default=None,
     )
+    parser.add_argument(
+        "--exclude-python-prefix",
+        action="store_true",
+        help="Do not search Python installation prefixes",
+    )
+    parser.add_argument(
+        "--exclude-env-var",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Exclude an environment variable from the default search path list",
+    )
 
     args = parser.parse_args()
 
+    exclude_env_vars = set(args.exclude_env_var)
+
     try:
-        result = resolve_robotics_uri(args.uri, args.package_dirs)
+        result = resolve_robotics_uri(
+            args.uri,
+            args.package_dirs,
+            exclude_python_prefix=args.exclude_python_prefix,
+            exclude_env_vars=list(exclude_env_vars),
+        )
     except FileNotFoundError as e:
         print(e, file=sys.stderr)
         sys.exit(1)

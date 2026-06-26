@@ -46,7 +46,7 @@ def test_scoped_uri(scheme: str, env_var_name="GZ_SIM_RESOURCE_PATH"):
     # Existing URI path not in search dirs
     with pytest.raises(FileNotFoundError):
         with tempfile.NamedTemporaryFile() as temp:
-            uri = f"{scheme}{temp.name}"
+            uri = f"{scheme}{pathlib.Path(temp.name).name}"
             resolve_robotics_uri_py.resolve_robotics_uri(uri)
 
     # URI path in top-level search dir
@@ -196,3 +196,78 @@ def test_additional_search_path():
         ):
             result = resolve_robotics_uri_py.resolve_robotics_uri(uri)
             assert result == temp_dir_path / "my_model"
+
+
+def test_sys_prefix_search_and_opt_out(monkeypatch):
+
+        clear_env_vars()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+                temp_dir_path = pathlib.Path(temp_dir).resolve()
+                share_dir = temp_dir_path / "share"
+                package_dir = share_dir / "example_python_package"
+                package_dir.mkdir(parents=True, exist_ok=True)
+
+                cube_urdf = package_dir / "cube.urdf"
+                cube_urdf.write_text(
+                        """<?xml version=\"1.0\"?>
+<robot name=\"example_cube\">
+    <link name=\"base_link\">
+        <visual>
+            <geometry>
+                <box size=\"0.1 0.1 0.1\"/>
+            </geometry>
+        </visual>
+    </link>
+</robot>
+""",
+                        encoding="utf-8",
+                )
+
+                monkeypatch.setattr(resolve_robotics_uri_py.resolve_robotics_uri_py.sys, "prefix", temp_dir)
+                monkeypatch.setattr(
+                    resolve_robotics_uri_py.resolve_robotics_uri_py.sysconfig,
+                    "get_path",
+                    lambda name, *args, **kwargs: temp_dir if name == "data" else None,
+                )
+
+                uri = "package://example_python_package/cube.urdf"
+
+                result = resolve_robotics_uri_py.resolve_robotics_uri(uri)
+                assert result == cube_urdf
+
+                with pytest.raises(FileNotFoundError):
+                    resolve_robotics_uri_py.resolve_robotics_uri(uri, exclude_python_prefix=True)
+
+                result = resolve_robotics_uri_py.resolve_robotics_uri(
+                        uri,
+                        package_dirs=[str(share_dir)],
+                    exclude_python_prefix=True,
+                )
+                assert result == cube_urdf
+
+
+        def test_exclude_env_vars(monkeypatch):
+
+            clear_env_vars()
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_dir_path = pathlib.Path(temp_dir).resolve()
+                model_dir = temp_dir_path / "gazebo_models"
+                model_dir.mkdir(parents=True, exist_ok=True)
+
+                model_file = model_dir / "example_model"
+                model_file.touch(exist_ok=True)
+
+                monkeypatch.setenv("GAZEBO_MODEL_PATH", str(model_dir))
+
+                uri = "model://example_model"
+
+                result = resolve_robotics_uri_py.resolve_robotics_uri(uri)
+                assert result == model_file
+
+                with pytest.raises(FileNotFoundError):
+                    resolve_robotics_uri_py.resolve_robotics_uri(
+                        uri,
+                        exclude_env_vars=["GAZEBO_MODEL_PATH"],
+                    )
