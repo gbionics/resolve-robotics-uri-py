@@ -218,7 +218,7 @@ def resolve_robotics_uri(
         # Expand or resolve the file path (symlinks and ..)
         candidate_file_name = candidate_file_name.resolve()
 
-        if not candidate_file_name.is_file():
+        if not candidate_file_name.exists():
             continue
 
         # Skip if the file is already in the list
