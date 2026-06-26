@@ -77,9 +77,7 @@ def get_default_search_paths(
     exclude_env_vars: Union[list[str], None] = None,
 ) -> list[pathlib.Path]:
     exclude_env_vars = set(exclude_env_vars or [])
-    search_env_vars = [
-        env for env in SupportedEnvVars if env not in exclude_env_vars
-    ]
+    search_env_vars = SupportedEnvVars - exclude_env_vars
     search_paths = get_search_paths_from_envs(search_env_vars)
 
     if not exclude_python_prefix:

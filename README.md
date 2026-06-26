@@ -94,7 +94,7 @@ absolute_path = resolve_robotics_uri_py.resolve_robotics_uri(
 
 ## Details on how files are searched
 
-You can find the detail how `resolve-robotics-uri-py`  find files in the [rru_spec.md](rru_spec.md) file.
+You can find the details on how `resolve-robotics-uri-py` find files in the [rru_spec.md](rru_spec.md) file.
 
 
 ## Contributing
