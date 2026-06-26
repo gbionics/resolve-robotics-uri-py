@@ -40,7 +40,6 @@ If you want to get the location of the `panda`  model installed by [`moveit_reso
 absolute_path = resolve_robotics_uri_py.resolve_robotics_uri("package://moveit_resources_panda_description/urdf/panda.urdf")
 ~~~
 
-
 ## Command Line usage
 
 `resolve_robotics_uri_py` also install a command line tool called `resolve-robotics-uri-py` for use in scripts, that can be used as:
@@ -92,6 +91,11 @@ absolute_path = resolve_robotics_uri_py.resolve_robotics_uri(
      package_dirs=["/path/to/packages", "/another/path"]
 )
 ~~~
+
+## Details on how files are searched
+
+You can find the details on how `resolve-robotics-uri-py` find files in the [rru_spec.md](rru_spec.md) file.
+
 
 ## Contributing
 
