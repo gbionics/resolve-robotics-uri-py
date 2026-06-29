@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>example_python_package</name>
+  <name>example_setuptools_package</name>
   <version>0.1.0</version>
   <description>Example of a pure python package that installs data files in a way that can be found by resolve-robotics-uri-py and regular ROS tooling.</description>
   <maintainer email="silvio.traversaro@gbionics.ai">Silvio Traversaro</maintainer>

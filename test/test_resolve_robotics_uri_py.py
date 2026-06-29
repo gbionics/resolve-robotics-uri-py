@@ -202,52 +202,57 @@ def test_sys_prefix_search_and_opt_out(monkeypatch):
 
     clear_env_vars()
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_dir_path = pathlib.Path(temp_dir).resolve()
-        share_dir = temp_dir_path / "share"
-        package_dir = share_dir / "example_python_package"
-        package_dir.mkdir(parents=True, exist_ok=True)
+    for backend in ("setuptools", "hatchling"):
+        package_name = f"example_{backend}_package"
 
-        cube_urdf = package_dir / "cube.urdf"
-        cube_urdf.write_text(
-            """<?xml version=\"1.0\"?>
-<robot name=\"example_cube\">
-    <link name=\"base_link\">
-        <visual>
-            <geometry>
-                <box size=\"0.1 0.1 0.1\"/>
-            </geometry>
-        </visual>
-    </link>
-</robot>
-""",
-            encoding="utf-8",
-        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir_path = pathlib.Path(temp_dir).resolve()
+            share_dir = temp_dir_path / "share"
+            package_dir = share_dir / package_name
+            package_dir.mkdir(parents=True, exist_ok=True)
 
-        monkeypatch.setattr(resolve_robotics_uri_py.resolve_robotics_uri_py.sys, "prefix", temp_dir)
-        monkeypatch.setattr(
-            resolve_robotics_uri_py.resolve_robotics_uri_py.sysconfig,
-            "get_path",
-            lambda name, *args, **kwargs: temp_dir if name == "data" else None,
-        )
-
-        uri = "package://example_python_package/cube.urdf"
-
-        result = resolve_robotics_uri_py.resolve_robotics_uri(uri)
-        assert result == cube_urdf
-
-        with pytest.raises(FileNotFoundError):
-            resolve_robotics_uri_py.resolve_robotics_uri(
-                uri,
-                exclude_python_prefix=True,
+            cube_urdf = package_dir / "cube.urdf"
+            cube_urdf.write_text(
+                """<?xml version=\"1.0\"?>
+    <robot name=\"example_cube\">
+        <link name=\"base_link\">
+            <visual>
+                <geometry>
+                    <box size=\"0.1 0.1 0.1\"/>
+                </geometry>
+            </visual>
+        </link>
+    </robot>
+    """,
+                encoding="utf-8",
             )
 
-        result = resolve_robotics_uri_py.resolve_robotics_uri(
-            uri,
-            package_dirs=[str(share_dir)],
-            exclude_python_prefix=True,
-        )
-        assert result == cube_urdf
+            monkeypatch.setattr(
+                resolve_robotics_uri_py.resolve_robotics_uri_py.sys, "prefix", temp_dir
+            )
+            monkeypatch.setattr(
+                resolve_robotics_uri_py.resolve_robotics_uri_py.sysconfig,
+                "get_path",
+                lambda name, *args, **kwargs: temp_dir if name == "data" else None,
+            )
+
+            uri = f"package://{package_name}/cube.urdf"
+
+            result = resolve_robotics_uri_py.resolve_robotics_uri(uri)
+            assert result == cube_urdf
+
+            with pytest.raises(FileNotFoundError):
+                resolve_robotics_uri_py.resolve_robotics_uri(
+                    uri,
+                    exclude_python_prefix=True,
+                )
+
+            result = resolve_robotics_uri_py.resolve_robotics_uri(
+                uri,
+                package_dirs=[str(share_dir)],
+                exclude_python_prefix=True,
+            )
+            assert result == cube_urdf
 
 
 def test_exclude_env_vars(monkeypatch):
