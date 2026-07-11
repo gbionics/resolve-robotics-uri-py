@@ -8,7 +8,7 @@ _SHARE_DIR = Path("share")
 
 
 def _ensure_ament_resource_marker() -> Path:
-    marker = Path("build") / "ament_resource_marker" / "example_python_package"
+    marker = Path("build") / "ament_resource_marker" / "example_setuptools_package"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.touch(exist_ok=True)
     return marker
@@ -17,7 +17,7 @@ def _ensure_ament_resource_marker() -> Path:
 def _build_data_files() -> list[tuple[str, list[str]]]:
     """Recursively collect share/ into wheel data-files without manual enumeration."""
     install_share = Path("share")
-    package_share = install_share / "example_python_package"
+    package_share = install_share / "example_setuptools_package"
     data_files: dict[str, list[str]] = {}
     if _SHARE_DIR.is_dir():
         for path in sorted(_SHARE_DIR.rglob("*")):
