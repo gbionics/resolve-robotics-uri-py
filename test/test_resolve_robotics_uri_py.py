@@ -159,7 +159,7 @@ def test_scheme_file():
     path_of_python_executable = resolve_robotics_uri_py.resolve_robotics_uri(
         sys.executable
     )
-    assert path_of_python_executable == pathlib.Path(sys.executable)
+    assert path_of_python_executable == pathlib.Path(sys.executable).resolve()
 
 
 def test_additional_search_path():

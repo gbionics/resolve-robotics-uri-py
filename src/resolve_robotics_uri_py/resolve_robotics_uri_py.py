@@ -4,6 +4,7 @@ import pathlib
 import sys
 import sysconfig
 import warnings
+from functools import lru_cache
 from typing import Union, Iterable
 from urllib.parse import urlparse
 from urllib.request import url2pathname
@@ -239,13 +240,141 @@ def resolve_robotics_uri(
         return pathlib.Path(model_filenames[0]).resolve()
 
 
+@lru_cache(maxsize=128)
+def _robot_directories(
+    search_roots: tuple[pathlib.Path, ...],
+) -> tuple[pathlib.Path, ...]:
+    directories = set()
+    for root in search_roots:
+        try:
+            for package in root.iterdir():
+                robots = package / "robots"
+                if package.is_dir() and robots.is_dir():
+                    directories.add(robots.resolve())
+        except OSError:
+            # Missing or unreadable roots cannot provide an override.
+            continue
+    return tuple(sorted(directories))
+
+
+def clear_robot_specific_file_cache() -> None:
+    """Refresh discovery after installing new packages or robots directories."""
+    _robot_directories.cache_clear()
+
+
+def resolve_robot_specific_file(
+    relative_path: str,
+    package_name: str = "",
+    package_dirs: Union[list[str], None] = None,
+    exclude_python_prefix: bool = False,
+    exclude_env_vars: Union[list[str], None] = None,
+) -> pathlib.Path:
+    """Find a regular file in the working directory, robot overrides, or a package.
+
+    Robot overrides live at <search-root>/<any-package>/robots/<robot>/<relative_path>.
+    ACTIVE_ROBOT_NAME selects the robot, falling back to a nonempty YARP_ROBOT_NAME.
+    Search options have the same meaning as in resolve_robotics_uri. Within each
+    lookup tier, canonical paths are sorted and the first match is returned; multiple
+    matches emit a warning. Package-directory discovery is cached per search-root set;
+    call clear_robot_specific_file_cache after installing new override packages.
+
+    A package:// input delegates directly to resolve_robotics_uri, forwarding all
+    search options and ignoring package_name and robot selection. If package_name
+    is omitted or empty, skip the package-default lookup entirely.
+
+    Returns an absolute pathlib.Path. Raises FileNotFoundError if no file matches,
+    or ValueError for an empty, absolute, other URI, or parent-traversing path,
+    or for a nonempty package/robot name that is not a single directory component.
+    """
+    if relative_path.startswith("package://"):
+        return resolve_robotics_uri(
+            relative_path, package_dirs, exclude_python_prefix, exclude_env_vars
+        )
+    path = pathlib.Path(relative_path)
+    if (
+        not relative_path
+        or path.is_absolute()
+        or path.anchor
+        or ".." in path.parts
+        or urlparse(relative_path).scheme
+    ):
+        raise ValueError(
+            "relative_path must be a nonempty relative filesystem path without '..' or a URI scheme"
+        )
+
+    def check_name(name: str, label: str) -> None:
+        if not name or name in (".", "..") or any(c in name for c in "/\\:"):
+            raise ValueError(f"{label} must be a single directory component")
+
+    if package_name:
+        check_name(package_name, "package_name")
+    if path.is_file():
+        return path.resolve()
+
+    robot = os.getenv("ACTIVE_ROBOT_NAME") or os.getenv("YARP_ROBOT_NAME")
+    if robot:
+        check_name(robot, "robot name")
+    entries = package_dirs if isinstance(package_dirs, list) else [package_dirs]
+    roots = set(get_default_search_paths(exclude_python_prefix, exclude_env_vars))
+    roots.update(
+        pathlib.Path(directory).expanduser().resolve()
+        for entry in entries
+        if entry
+        for directory in entry.split(os.pathsep)
+        if directory
+        if pathlib.Path(directory).expanduser().is_dir()
+    )
+    roots = tuple(sorted(roots))
+
+    def find(candidates):
+        matches = sorted(
+            {candidate.resolve() for candidate in candidates if candidate.is_file()}
+        )
+        if len(matches) > 1:
+            warnings.warn(
+                "resolve-robotics-uri-py: Multiple files ({}) found for robot-specific "
+                "file '{}', returning the first one.".format(
+                    pathlist_list_to_string(matches), relative_path
+                )
+            )
+        return matches[0] if matches else None
+
+    if robot:
+        result = find(
+            directory / robot / path for directory in _robot_directories(roots)
+        )
+        if result is not None:
+            return result
+    if package_name:
+        result = find(root / package_name / path for root in roots)
+        if result is not None:
+            return result
+    raise FileNotFoundError(
+        f"resolve-robotics-uri-py: No robot-specific or default file '{relative_path}' "
+        f"found for package '{package_name}'"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Utility resolve a robotics URI ({}) to an absolute filename.".format(
             ", ".join(f"{scheme}://" for scheme in SupportedSchemes)
         )
     )
-    parser.add_argument("uri", metavar="URI", type=str, help="URI to resolve")
+    parser.add_argument(
+        "uri", metavar="URI", type=str, help="URI or relative file path to resolve"
+    )
+    parser.add_argument(
+        "--package-name",
+        default="",
+        metavar="NAME",
+        help="Package providing a default for a relative file path",
+    )
+    parser.add_argument(
+        "--do-not-use-robot-specific-resolve",
+        action="store_true",
+        help="Use the original URI resolver without robot-specific lookup",
+    )
     parser.add_argument(
         "--package_dirs",
         metavar="PATH",
@@ -271,13 +400,22 @@ def main():
     exclude_env_vars = set(args.exclude_env_var)
 
     try:
-        result = resolve_robotics_uri(
-            args.uri,
-            args.package_dirs,
+        search_options = dict(
+            package_dirs=args.package_dirs,
             exclude_python_prefix=args.exclude_python_prefix,
             exclude_env_vars=list(exclude_env_vars),
         )
-    except FileNotFoundError as e:
+        if (
+            args.do_not_use_robot_specific_resolve
+            or args.uri.startswith(("file:", "model:"))
+            or pathlib.Path(args.uri).is_absolute()
+        ):
+            result = resolve_robotics_uri(args.uri, **search_options)
+        else:
+            result = resolve_robot_specific_file(
+                args.uri, args.package_name, **search_options
+            )
+    except (FileNotFoundError, ValueError) as e:
         print(e, file=sys.stderr)
         sys.exit(1)
 
