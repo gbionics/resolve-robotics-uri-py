@@ -1,3 +1,6 @@
+from pathlib import Path
+from unittest.mock import patch
+
 import pytest
 
 from resolve_robotics_uri_py import get_default_uri_overrides, resolve_robotics_uri
@@ -94,3 +97,13 @@ def test_default_override_mappings_are_independent(tmp_path, monkeypatch):
     overrides.clear()
     assert "robot://" in get_default_uri_overrides()
     assert resolve_robotics_uri("robot://local.ini") == local
+
+
+@pytest.mark.parametrize(
+    "uri", ["robot://local.ini", "custom://local.ini", "https://example.org/file"]
+)
+def test_unsupported_uri_is_rejected_before_path_resolution(uri):
+    # Python 3.9 on Windows raises WinError 123 when resolving a URI as a path.
+    with patch.object(Path, "resolve", side_effect=OSError(123, "Invalid path")):
+        with pytest.raises(FileNotFoundError, match="non-supported scheme"):
+            resolve_robotics_uri(uri, uri_overrides={})

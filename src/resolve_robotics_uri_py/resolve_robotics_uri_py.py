@@ -187,8 +187,11 @@ def resolve_robotics_uri(
     )
 
     # If the URI has no scheme, use by default file:// which maps the resolved input
-    # path to a URI with empty authority
-    if not any(uri.startswith(scheme) for scheme in SupportedSchemes):
+    # path to a URI with empty authority. Leave explicit URI schemes intact so
+    # unsupported schemes are rejected before Windows filesystem normalization.
+    if "://" not in uri and not any(
+        uri.startswith(scheme) for scheme in SupportedSchemes
+    ):
         uri = pathlib.Path(uri).resolve().as_uri()
 
     # Parse the URI to determine the scheme and path
