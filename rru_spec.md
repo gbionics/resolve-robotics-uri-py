@@ -84,8 +84,9 @@ handler or normal lookup is tried afterward. Empty prefixes are invalid.
 The `uri_overrides` keyword accepts a mapping of prefix strings to callbacks with
 signature `callback(uri, *, package_dirs, exclude_python_prefix, exclude_env_vars,
 default_package_name) -> pathlib.Path`. Callbacks may raise exceptions. `None` uses
-`DEFAULT_URI_OVERRIDES`, which contains the `robot://` callback. An explicit mapping
-replaces the defaults; use `{}` to disable them, or unpack `DEFAULT_URI_OVERRIDES`
+`get_default_uri_overrides()`, which returns a fresh mapping containing the
+`robot://` callback. An explicit mapping
+replaces the defaults; use `{}` to disable them, or unpack `get_default_uri_overrides()`
 into a new mapping to extend them.
 
 Callbacks can override built-in prefixes as well as new ones. When delegating to

@@ -1,6 +1,6 @@
 import pytest
 
-from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDES, resolve_robotics_uri
+from resolve_robotics_uri_py import get_default_uri_overrides, resolve_robotics_uri
 
 
 def test_callbacks_receive_uri_and_options(tmp_path):
@@ -66,7 +66,7 @@ def test_defaults_can_be_extended_replaced_or_disabled(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     local = tmp_path / "local.ini"
     local.touch()
-    overrides = {**DEFAULT_URI_OVERRIDES, "custom://": lambda uri, **options: local}
+    overrides = {**get_default_uri_overrides(), "custom://": lambda uri, **options: local}
     assert resolve_robotics_uri("robot://local.ini", uri_overrides=overrides) == local
     assert resolve_robotics_uri("custom://file", uri_overrides=overrides) == local
     with pytest.raises(FileNotFoundError):
@@ -84,3 +84,13 @@ def test_custom_handler_can_delegate(tmp_path):
         return resolve_robotics_uri(local.as_uri(), uri_overrides={}, **options)
 
     assert resolve_robotics_uri("alias://file", uri_overrides={"alias://": alias}) == local
+
+
+def test_default_override_mappings_are_independent(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    local = tmp_path / "local.ini"
+    local.touch()
+    overrides = get_default_uri_overrides()
+    overrides.clear()
+    assert "robot://" in get_default_uri_overrides()
+    assert resolve_robotics_uri("robot://local.ini") == local

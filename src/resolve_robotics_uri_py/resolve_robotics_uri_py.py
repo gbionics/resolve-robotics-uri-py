@@ -164,7 +164,7 @@ def resolve_robotics_uri(
         `package://ModelName/meshes/mesh.stl`, and the actual file is in
         `/usr/local/share/ModelName/meshes/mesh.stl`, the `package_dirs` should contain `/usr/local/share`.
     """
-    overrides = DEFAULT_URI_OVERRIDES if uri_overrides is None else uri_overrides
+    overrides = get_default_uri_overrides() if uri_overrides is None else uri_overrides
     if any(
         not prefix or not callable(callback)
         for prefix, callback in overrides.items()
@@ -360,7 +360,9 @@ def _resolve_robot_uri(
     )
 
 
-DEFAULT_URI_OVERRIDES = {"robot://": _resolve_robot_uri}
+def get_default_uri_overrides() -> dict[str, Callable[..., pathlib.Path]]:
+    """Return a fresh mapping of the default URI override callbacks."""
+    return {"robot://": _resolve_robot_uri}
 
 
 def main():

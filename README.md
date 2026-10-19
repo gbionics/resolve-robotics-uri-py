@@ -72,7 +72,7 @@ A callback's failure does not fall back to another handler.
 
 ```python
 from pathlib import Path
-from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDES, resolve_robotics_uri
+from resolve_robotics_uri_py import get_default_uri_overrides, resolve_robotics_uri
 
 # Resolve home://Documents/notes.txt inside the current user's home directory.
 def resolve_home(uri, **options):
@@ -82,9 +82,12 @@ def resolve_home(uri, **options):
 
 absolute_path = resolve_robotics_uri(
     "home://Documents/notes.txt",
-    uri_overrides={**DEFAULT_URI_OVERRIDES, "home://": resolve_home},
+    uri_overrides={**get_default_uri_overrides(), "home://": resolve_home},
 )
 ```
+
+`get_default_uri_overrides()` returns a fresh mapping that callers can modify
+without affecting subsequent resolutions.
 
 This resolves `home://Documents/notes.txt` to `Documents/notes.txt` under the user’s
 home directory, while retaining `robot://`. The callback also receives
