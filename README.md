@@ -65,25 +65,25 @@ cached; see [the search specification](rru_spec.md) for refresh and error behavi
 
 ### Custom URI overrides
 
-`uri_override` maps URI prefixes to callbacks. The longest matching prefix wins,
+`uri_overrides` maps URI prefixes to callbacks. The longest matching prefix wins,
 before normal resolution. The callback receives the full URI and the search
 options as keyword arguments and returns a `pathlib.Path` or raises an exception.
 A callback's failure does not fall back to another handler.
 
 ```python
 from pathlib import Path
-from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDE, resolve_robotics_uri
+from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDES, resolve_robotics_uri
 
 config_root = Path("/opt/my-app/config")
 
 # Resolve config://controller.ini inside the application's config directory.
 def resolve_config(uri, **options):
     path = config_root / uri[len("config://") :]
-    return resolve_robotics_uri(str(path), uri_override={}, **options)
+    return resolve_robotics_uri(str(path), uri_overrides={}, **options)
 
 absolute_path = resolve_robotics_uri(
     "config://controller.ini",
-    uri_override={**DEFAULT_URI_OVERRIDE, "config://": resolve_config},
+    uri_overrides={**DEFAULT_URI_OVERRIDES, "config://": resolve_config},
 )
 ```
 
@@ -91,8 +91,8 @@ This adds `config://` while retaining `robot://`. The callback also receives
 `default_package_name`, so custom overrides can use it for their own fallback logic.
 A runnable version is in [examples/custom_uri_override.py](examples/custom_uri_override.py).
 
-Omitting `uri_override` uses the default `robot://` handler. An explicit mapping
-replaces the defaults; `uri_override={}` disables all overrides. Existing schemes
+Omitting `uri_overrides` uses the default `robot://` handler. An explicit mapping
+replaces the defaults; `uri_overrides={}` disables all overrides. Existing schemes
 can be replaced too, e.g. a `"model://"` callback could resolve models from an
 application-specific directory. Callbacks that call the resolver again should
 remove their own prefix or use an empty mapping to avoid recursion.

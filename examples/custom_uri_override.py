@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 
-from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDE, resolve_robotics_uri
+from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDES, resolve_robotics_uri
 
 
 def main():
@@ -15,12 +15,12 @@ def main():
     # Resolve config:// URIs relative to an application-specific directory.
     def resolve_config(uri, **options):
         path = args.config_root.resolve() / uri[len("config://") :]
-        return resolve_robotics_uri(str(path), uri_override={}, **options)
+        return resolve_robotics_uri(str(path), uri_overrides={}, **options)
 
     print(
         resolve_robotics_uri(
             args.uri,
-            uri_override={**DEFAULT_URI_OVERRIDE, "config://": resolve_config},
+            uri_overrides={**DEFAULT_URI_OVERRIDES, "config://": resolve_config},
         )
     )
 

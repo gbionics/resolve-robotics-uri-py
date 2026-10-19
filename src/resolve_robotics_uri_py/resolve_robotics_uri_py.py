@@ -129,7 +129,7 @@ def resolve_robotics_uri(
     package_dirs: Union[list[str], None] = None,
     exclude_python_prefix: bool = False,
     exclude_env_vars: Union[list[str], None] = None,
-    uri_override: Union[Mapping[str, Callable[..., pathlib.Path]], None] = None,
+    uri_overrides: Union[Mapping[str, Callable[..., pathlib.Path]], None] = None,
     default_package_name: str = "",
 ) -> pathlib.Path:
     """
@@ -141,7 +141,7 @@ def resolve_robotics_uri(
         exclude_python_prefix: If True, do not search Python installation prefixes.
         exclude_env_vars: Optional list of environment variable names to exclude from
             the default search path list.
-        uri_override: URI prefix to resolver callback mapping. None enables the
+        uri_overrides: URI prefix to resolver callback mapping. None enables the
             default robot:// handler; an empty mapping disables overrides. The
             longest matching prefix wins. Callbacks receive the full URI and
             package_dirs, exclude_python_prefix, exclude_env_vars, default_package_name
@@ -164,7 +164,7 @@ def resolve_robotics_uri(
         `package://ModelName/meshes/mesh.stl`, and the actual file is in
         `/usr/local/share/ModelName/meshes/mesh.stl`, the `package_dirs` should contain `/usr/local/share`.
     """
-    overrides = DEFAULT_URI_OVERRIDE if uri_override is None else uri_override
+    overrides = DEFAULT_URI_OVERRIDES if uri_overrides is None else uri_overrides
     if any(
         not prefix or not callable(callback)
         for prefix, callback in overrides.items()
@@ -360,7 +360,7 @@ def _resolve_robot_uri(
     )
 
 
-DEFAULT_URI_OVERRIDE = {"robot://": _resolve_robot_uri}
+DEFAULT_URI_OVERRIDES = {"robot://": _resolve_robot_uri}
 
 
 def main():

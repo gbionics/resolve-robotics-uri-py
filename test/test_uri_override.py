@@ -1,6 +1,6 @@
 import pytest
 
-from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDE, resolve_robotics_uri
+from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDES, resolve_robotics_uri
 
 
 def test_callbacks_receive_uri_and_options(tmp_path):
@@ -25,7 +25,7 @@ def test_callbacks_receive_uri_and_options(tmp_path):
     ):
         assert (
             resolve_robotics_uri(
-                uri, uri_override={uri.split(":")[0] + "://": callback}, **options
+                uri, uri_overrides={uri.split(":")[0] + "://": callback}, **options
             )
             == tmp_path / "result"
         )
@@ -41,11 +41,11 @@ def test_longest_prefix_and_no_implicit_fallback(tmp_path):
 
     overrides = {"custom://": broad, "custom://nested/": specific}
     assert (
-        resolve_robotics_uri("custom://nested/file", uri_override=overrides)
+        resolve_robotics_uri("custom://nested/file", uri_overrides=overrides)
         == tmp_path / "specific"
     )
     assert (
-        resolve_robotics_uri("custom://file", uri_override=overrides)
+        resolve_robotics_uri("custom://file", uri_overrides=overrides)
         == tmp_path / "broad"
     )
 
@@ -55,25 +55,25 @@ def test_longest_prefix_and_no_implicit_fallback(tmp_path):
     local = tmp_path / "local.ini"
     local.touch()
     with pytest.raises(FileNotFoundError, match="callback failed"):
-        resolve_robotics_uri(local.as_uri(), uri_override={"file://": missing})
+        resolve_robotics_uri(local.as_uri(), uri_overrides={"file://": missing})
     with pytest.raises(ValueError, match="prefixes"):
-        resolve_robotics_uri("anything", uri_override={"": broad})
+        resolve_robotics_uri("anything", uri_overrides={"": broad})
     with pytest.raises(ValueError, match="callable"):
-        resolve_robotics_uri("custom://file", uri_override={"custom://": None})
+        resolve_robotics_uri("custom://file", uri_overrides={"custom://": None})
 
 
 def test_defaults_can_be_extended_replaced_or_disabled(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     local = tmp_path / "local.ini"
     local.touch()
-    overrides = {**DEFAULT_URI_OVERRIDE, "custom://": lambda uri, **options: local}
-    assert resolve_robotics_uri("robot://local.ini", uri_override=overrides) == local
-    assert resolve_robotics_uri("custom://file", uri_override=overrides) == local
+    overrides = {**DEFAULT_URI_OVERRIDES, "custom://": lambda uri, **options: local}
+    assert resolve_robotics_uri("robot://local.ini", uri_overrides=overrides) == local
+    assert resolve_robotics_uri("custom://file", uri_overrides=overrides) == local
     with pytest.raises(FileNotFoundError):
-        resolve_robotics_uri("robot://local.ini", uri_override={})
+        resolve_robotics_uri("robot://local.ini", uri_overrides={})
     # Explicit mappings do not alter the defaults of subsequent calls.
     assert resolve_robotics_uri("robot://local.ini") == local
-    assert resolve_robotics_uri(str(local), uri_override={}) == local
+    assert resolve_robotics_uri(str(local), uri_overrides={}) == local
 
 
 def test_custom_handler_can_delegate(tmp_path):
@@ -81,6 +81,6 @@ def test_custom_handler_can_delegate(tmp_path):
     local.touch()
 
     def alias(uri, **options):
-        return resolve_robotics_uri(local.as_uri(), uri_override={}, **options)
+        return resolve_robotics_uri(local.as_uri(), uri_overrides={}, **options)
 
-    assert resolve_robotics_uri("alias://file", uri_override={"alias://": alias}) == local
+    assert resolve_robotics_uri("alias://file", uri_overrides={"alias://": alias}) == local

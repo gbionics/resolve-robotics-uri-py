@@ -81,11 +81,11 @@ prefixes; the longest matching prefix selects one callback. The callback receive
 the full input URI and search options. Its result or failure is final; no other
 handler or normal lookup is tried afterward. Empty prefixes are invalid.
 
-The `uri_override` keyword accepts a mapping of prefix strings to callbacks with
+The `uri_overrides` keyword accepts a mapping of prefix strings to callbacks with
 signature `callback(uri, *, package_dirs, exclude_python_prefix, exclude_env_vars,
 default_package_name) -> pathlib.Path`. Callbacks may raise exceptions. `None` uses
-`DEFAULT_URI_OVERRIDE`, which contains the `robot://` callback. An explicit mapping
-replaces the defaults; use `{}` to disable them, or unpack `DEFAULT_URI_OVERRIDE`
+`DEFAULT_URI_OVERRIDES`, which contains the `robot://` callback. An explicit mapping
+replaces the defaults; use `{}` to disable them, or unpack `DEFAULT_URI_OVERRIDES`
 into a new mapping to extend them.
 
 Callbacks can override built-in prefixes as well as new ones. When delegating to
