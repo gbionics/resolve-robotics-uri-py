@@ -1,6 +1,6 @@
-# `resolve_robotics_uri_py.resolve_robotics_uri` File Search Rules
+# `resolve_robotics_uri_py` File Search Rules
 
-`resolve_robotics_uri_py.resolve_robotics_uri` resolves URIs by following the rules below.
+`resolve_robotics_uri_py` resolves URIs by following the rules below.
 
 ## Supported URI Schemes
 
@@ -76,12 +76,15 @@ If no matching file is found, the resolver raises `FileNotFoundError`.
 
 # URI overrides
 
-Overrides are checked before normal URI/path processing. Keys are nonempty URI
-prefixes; the longest matching prefix selects one callback. The callback receives
-the full input URI and search options. Its result or failure is final; no other
-handler or normal lookup is tried afterward. Empty prefixes are invalid.
+Overrides are checked before normal URI/path processing. Keys are lowercase URI
+scheme names without ":" or "//", e.g. `"home"`. The parsed scheme is matched
+exactly, so `home://file` and `home:file` select the same handler; `homework://file`
+does not. Override selection is case-insensitive. Windows drive paths bypass overrides.
+The callback receives the full input URI and search options. Its result or failure
+is final; no other handler or normal lookup is tried afterward. Empty or invalid
+scheme names are rejected.
 
-The `uri_overrides` keyword accepts a mapping of prefix strings to callbacks with
+The `uri_overrides` keyword accepts a mapping of scheme names to callbacks with
 signature `callback(uri, *, package_dirs, exclude_python_prefix, exclude_env_vars,
 default_package_name) -> pathlib.Path`. Callbacks may raise exceptions. `None` uses
 `get_default_uri_overrides()`, which returns a fresh mapping containing the
@@ -89,8 +92,8 @@ default_package_name) -> pathlib.Path`. Callbacks may raise exceptions. `None` u
 replaces the defaults; use `{}` to disable them, or unpack `get_default_uri_overrides()`
 into a new mapping to extend them.
 
-Callbacks can override built-in prefixes as well as new ones. When delegating to
-the resolver, remove the matching override (or disable overrides) to avoid recursion.
+Callbacks can override built-in schemes as well as custom schemes. When delegating to
+the resolver, remove the matching scheme override (or disable overrides) to avoid recursion.
 
 # Robot-specific files via `robot://`
 

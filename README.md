@@ -65,9 +65,9 @@ cached; see [the search specification](rru_spec.md) for refresh and error behavi
 
 ### Custom URI overrides
 
-`uri_overrides` maps URI prefixes to callbacks. The longest matching prefix wins,
-before normal resolution. The callback receives the full URI and the search
-options as keyword arguments and returns a `pathlib.Path` or raises an exception.
+`uri_overrides` maps URI scheme names to callbacks. Keys omit `://`, e.g. `"home"`,
+and match the parsed scheme exactly before normal resolution. The callback
+receives the full URI and the search options as keyword arguments and returns a `pathlib.Path` or raises an exception.
 A callback's failure does not fall back to another handler.
 
 ```python
@@ -76,29 +76,29 @@ from resolve_robotics_uri_py import get_default_uri_overrides, resolve_robotics_
 
 # Resolve home://Documents/notes.txt inside the current user's home directory.
 def resolve_home(uri, **options):
-    path = Path.home() / uri[len("home://") :]
+    path = Path.home() / uri.partition(":")[2].removeprefix("//")
     return resolve_robotics_uri(str(path), uri_overrides={}, **options)
 
 
 absolute_path = resolve_robotics_uri(
     "home://Documents/notes.txt",
-    uri_overrides={**get_default_uri_overrides(), "home://": resolve_home},
+    uri_overrides={**get_default_uri_overrides(), "home": resolve_home},
 )
 ```
 
 `get_default_uri_overrides()` returns a fresh mapping that callers can modify
 without affecting subsequent resolutions.
 
-This resolves `home://Documents/notes.txt` to `Documents/notes.txt` under the user’s
+This resolves `home://Documents/notes.txt` to `Documents/notes.txt` under the user's
 home directory, while retaining `robot://`. The callback also receives
 `default_package_name`, so custom overrides can use it for their own fallback logic.
 A runnable version is in [examples/custom_uri_override.py](examples/custom_uri_override.py).
 
 Omitting `uri_overrides` uses the default `robot://` handler. An explicit mapping
 replaces the defaults; `uri_overrides={}` disables all overrides. Existing schemes
-can be replaced too, e.g. a `"model://"` callback could resolve models from an
+can be replaced too, e.g. a `"model"` callback could resolve models from an
 application-specific directory. Callbacks that call the resolver again should
-remove their own prefix or use an empty mapping to avoid recursion.
+remove their own scheme or use an empty mapping to avoid recursion.
 
 ## Command Line usage
 

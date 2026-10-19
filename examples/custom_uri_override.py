@@ -8,7 +8,7 @@ from resolve_robotics_uri_py import get_default_uri_overrides, resolve_robotics_
 
 # Resolve home://Documents/notes.txt inside the current user's home directory.
 def resolve_home(uri, **options):
-    path = Path.home() / uri[len("home://") :]
+    path = Path.home() / uri.partition(":")[2].removeprefix("//")
     return resolve_robotics_uri(str(path), uri_overrides={}, **options)
 
 
@@ -19,7 +19,7 @@ def main():
     print(
         resolve_robotics_uri(
             args.uri,
-            uri_overrides={**get_default_uri_overrides(), "home://": resolve_home},
+            uri_overrides={**get_default_uri_overrides(), "home": resolve_home},
         )
     )
 

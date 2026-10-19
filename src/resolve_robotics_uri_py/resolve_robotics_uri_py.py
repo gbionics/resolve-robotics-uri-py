@@ -141,11 +141,12 @@ def resolve_robotics_uri(
         exclude_python_prefix: If True, do not search Python installation prefixes.
         exclude_env_vars: Optional list of environment variable names to exclude from
             the default search path list.
-        uri_overrides: URI prefix to resolver callback mapping. None enables the
+        uri_overrides: URI scheme name to resolver callback mapping. None enables the
             default robot:// handler; an empty mapping disables overrides. The
-            longest matching prefix wins. Callbacks receive the full URI and
-            package_dirs, exclude_python_prefix, exclude_env_vars, default_package_name
-            as keyword arguments. Their result or exception is returned directly.
+            scheme is matched exactly, without ":" or "//" in the key. Callbacks
+            receive the full URI and package_dirs, exclude_python_prefix,
+            exclude_env_vars, default_package_name as keyword arguments. Their
+            result or exception is returned directly.
         default_package_name: Optional default package for robot:// resolution,
             also available to other URI override callbacks.
 
@@ -164,15 +165,19 @@ def resolve_robotics_uri(
         `package://ModelName/meshes/mesh.stl`, and the actual file is in
         `/usr/local/share/ModelName/meshes/mesh.stl`, the `package_dirs` should contain `/usr/local/share`.
     """
+    parsed_uri = urlparse(uri)
+    is_windows_drive_path = bool(pathlib.PureWindowsPath(uri).drive)
     overrides = get_default_uri_overrides() if uri_overrides is None else uri_overrides
     if any(
-        not prefix or not callable(callback)
-        for prefix, callback in overrides.items()
+        not isinstance(scheme, str)
+        or not scheme
+        or urlparse(scheme + ":").scheme != scheme
+        or not callable(callback)
+        for scheme, callback in overrides.items()
     ):
-        raise ValueError("URI overrides require nonempty prefixes and callable handlers")
-    prefix = max((p for p in overrides if uri.startswith(p)), key=len, default=None)
-    if prefix is not None:
-        return overrides[prefix](
+        raise ValueError("URI overrides require lowercase scheme names and callable handlers")
+    if not is_windows_drive_path and parsed_uri.scheme in overrides:
+        return overrides[parsed_uri.scheme](
             uri,
             package_dirs=package_dirs,
             exclude_python_prefix=exclude_python_prefix,
@@ -189,8 +194,6 @@ def resolve_robotics_uri(
     # If the URI has no scheme, use by default file:// which maps the resolved input
     # path to a URI with empty authority. Leave explicit URI schemes intact so
     # unsupported schemes are rejected before Windows filesystem normalization.
-    parsed_uri = urlparse(uri)
-    is_windows_drive_path = bool(pathlib.PureWindowsPath(uri).drive)
     if (
         parsed_uri.scheme
         and parsed_uri.scheme not in SupportedSchemes
@@ -305,7 +308,7 @@ def _resolve_robot_uri(
     exclude_env_vars: Union[list[str], None] = None,
 ) -> pathlib.Path:
     """Default robot:// callback: working directory, robot override, package default."""
-    relative_path = uri[len("robot://") :]
+    relative_path = uri.partition(":")[2].removeprefix("//")
     path = pathlib.Path(relative_path)
     if (
         not relative_path
@@ -372,8 +375,8 @@ def _resolve_robot_uri(
 
 
 def get_default_uri_overrides() -> dict[str, Callable[..., pathlib.Path]]:
-    """Return a fresh mapping of the default URI override callbacks."""
-    return {"robot://": _resolve_robot_uri}
+    """Return fresh default URI callbacks keyed by lowercase scheme names."""
+    return {"robot": _resolve_robot_uri}
 
 
 def main():
