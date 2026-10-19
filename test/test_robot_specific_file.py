@@ -2,12 +2,17 @@ import pytest
 
 from resolve_robotics_uri_py import (
     clear_robot_specific_file_cache,
-    resolve_robot_specific_file,
+    resolve_robotics_uri,
 )
 from resolve_robotics_uri_py.resolve_robotics_uri_py import (
     SupportedEnvVars,
     _robot_directories,
 )
+
+
+def resolve_robot_uri(path, default_package_name="", **options):
+    uri = path if path.startswith("package://") else "robot://" + path
+    return resolve_robotics_uri(uri, default_package_name=default_package_name, **options)
 
 
 @pytest.fixture
@@ -29,7 +34,7 @@ def write(path):
 
 
 def resolve(root, **kwargs):
-    return resolve_robot_specific_file(
+    return resolve_robot_uri(
         "config/controller.ini",
         "ControlLib",
         package_dirs=[str(root)],
@@ -106,13 +111,13 @@ def test_search_options_and_ambiguity(layout, monkeypatch):
     monkeypatch.setenv("AMENT_PREFIX_PATH", str(root.parent))
     with pytest.warns(UserWarning, match="Multiple files"):
         assert (
-            resolve_robot_specific_file(
+            resolve_robot_uri(
                 "config/controller.ini", "ControlLib", exclude_python_prefix=True
             )
             == first
         )
     with pytest.raises(FileNotFoundError):
-        resolve_robot_specific_file(
+        resolve_robot_uri(
             "config/controller.ini",
             "ControlLib",
             exclude_python_prefix=True,
@@ -122,7 +127,7 @@ def test_search_options_and_ambiguity(layout, monkeypatch):
     assert resolve(root) == default
     monkeypatch.setattr("sys.prefix", str(root.parent))
     assert (
-        resolve_robot_specific_file(
+        resolve_robot_uri(
             "config/controller.ini",
             "ControlLib",
             exclude_env_vars=["AMENT_PREFIX_PATH"],
@@ -144,7 +149,7 @@ def test_search_options_and_ambiguity(layout, monkeypatch):
 )
 def test_invalid_input(layout, path, package):
     with pytest.raises(ValueError):
-        resolve_robot_specific_file(path, package, exclude_python_prefix=True)
+        resolve_robot_uri(path, package, exclude_python_prefix=True)
 
 
 def test_invalid_robot(layout, monkeypatch):
@@ -175,7 +180,7 @@ def test_symlinked_package_and_deduplicated_roots(layout, monkeypatch):
         pytest.skip("Directory symlinks are unavailable")
     monkeypatch.setenv("ACTIVE_ROBOT_NAME", "MyRobot")
     assert (
-        resolve_robot_specific_file(
+        resolve_robot_uri(
             "config/controller.ini",
             "ControlLib",
             package_dirs=[str(root), str(root / ".")],
@@ -193,7 +198,7 @@ def test_package_uri_delegates(layout, monkeypatch):
     monkeypatch.setenv("ACTIVE_ROBOT_NAME", "MyRobot")
     uri = "package://ControlLib/config/controller.ini"
     assert (
-        resolve_robot_specific_file(
+        resolve_robot_uri(
             uri, package_dirs=[str(root)], exclude_python_prefix=True
         )
         == default
@@ -201,20 +206,20 @@ def test_package_uri_delegates(layout, monkeypatch):
     # Neither an unrelated package name nor invalid robot selection affects URIs.
     monkeypatch.setenv("ACTIVE_ROBOT_NAME", "../invalid")
     assert (
-        resolve_robot_specific_file(
+        resolve_robot_uri(
             uri, "other/package", package_dirs=[str(root)], exclude_python_prefix=True
         )
         == default
     )
     monkeypatch.setenv("RRU_ADDITIONAL_PATHS", str(root))
-    assert resolve_robot_specific_file(uri, exclude_python_prefix=True) == default
+    assert resolve_robot_uri(uri, exclude_python_prefix=True) == default
     with pytest.raises(FileNotFoundError):
-        resolve_robot_specific_file(
+        resolve_robot_uri(
             uri, exclude_python_prefix=True, exclude_env_vars=["RRU_ADDITIONAL_PATHS"]
         )
     default.unlink()
     with pytest.raises(FileNotFoundError):
-        resolve_robot_specific_file(
+        resolve_robot_uri(
             uri, package_dirs=[str(root)], exclude_python_prefix=True
         )
 
@@ -226,10 +231,10 @@ def test_no_package_skips_default(layout, monkeypatch):
     options = dict(package_dirs=[str(root)], exclude_python_prefix=True)
     for package in ((), ("",)):
         with pytest.raises(FileNotFoundError):
-            resolve_robot_specific_file("config/controller.ini", *package, **options)
+            resolve_robot_uri("config/controller.ini", *package, **options)
     monkeypatch.setenv("ACTIVE_ROBOT_NAME", "MyRobot")
     override = write(root / "Overrides/robots/MyRobot/config/controller.ini")
     clear_robot_specific_file_cache()
-    assert resolve_robot_specific_file("config/controller.ini", **options) == override
+    assert resolve_robot_uri("config/controller.ini", **options) == override
     local = write(cwd / "config/controller.ini")
-    assert resolve_robot_specific_file("config/controller.ini", **options) == local
+    assert resolve_robot_uri("config/controller.ini", **options) == local

@@ -42,31 +42,60 @@ absolute_path = resolve_robotics_uri_py.resolve_robotics_uri("package://moveit_r
 
 ## Robot-specific configuration files
 
-Use `resolve_robot_specific_file` to let a separate robot configuration package
-override a default file installed by your software package:
+Use `robot://` with the existing resolver:
 
 ```python
-import resolve_robotics_uri_py
+from resolve_robotics_uri_py import resolve_robotics_uri
 
-absolute_path = resolve_robotics_uri_py.resolve_robot_specific_file(
-    "config/controller.ini", "ControlLib"
+absolute_path = resolve_robotics_uri(
+    "robot://config/controller.ini", default_package_name="ControlLib"
 )
 ```
 
-For example, install the default at `share/ControlLib/config/controller.ini`
-and an override at
-`share/CompanyRobotConfigurations/robots/MyRobot/config/controller.ini`. Set
-`ACTIVE_ROBOT_NAME=MyRobot` (or `YARP_ROBOT_NAME` as a fallback). A file at
-`config/controller.ini` in the working directory takes priority; otherwise the
-robot override takes priority over the default. The helper requires regular files
-and returns absolute paths. It accepts the same search options as the URI resolver.
+For example, install the default at `share/ControlLib/config/controller.ini` and
+an override at `share/CompanyRobotConfigurations/robots/MyRobot/config/controller.ini`.
+Set `ACTIVE_ROBOT_NAME=MyRobot` (or `YARP_ROBOT_NAME` as a fallback). The lookup is:
 
-Discovery of `robots` directories is cached. See [the search specification](rru_spec.md)
-for ordering, errors, and how to refresh discovery after installing new packages.
+1. A regular file at `config/controller.ini` in the working directory.
+2. The robot-specific file under any immediate package's `robots/<robot>` directory.
+3. The default package file, if a default package name was supplied.
 
-The package name is optional: omitting it skips the package-default lookup. An
-explicit `package://` input delegates to the original URI resolver, so it does not
-use working-directory or robot overrides.
+Results are absolute paths to regular files. Discovery of `robots` directories is
+cached; see [the search specification](rru_spec.md) for refresh and error behavior.
+
+### Custom URI overrides
+
+`uri_override` maps URI prefixes to callbacks. The longest matching prefix wins,
+before normal resolution. The callback receives the full URI and the search
+options as keyword arguments and returns a `pathlib.Path` or raises an exception.
+A callback's failure does not fall back to another handler.
+
+```python
+from pathlib import Path
+from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDE, resolve_robotics_uri
+
+config_root = Path("/opt/my-app/config")
+
+# Resolve config://controller.ini inside the application's config directory.
+def resolve_config(uri, **options):
+    path = config_root / uri[len("config://") :]
+    return resolve_robotics_uri(str(path), uri_override={}, **options)
+
+absolute_path = resolve_robotics_uri(
+    "config://controller.ini",
+    uri_override={**DEFAULT_URI_OVERRIDE, "config://": resolve_config},
+)
+```
+
+This adds `config://` while retaining `robot://`. The callback also receives
+`default_package_name`, so custom overrides can use it for their own fallback logic.
+A runnable version is in [examples/custom_uri_override.py](examples/custom_uri_override.py).
+
+Omitting `uri_override` uses the default `robot://` handler. An explicit mapping
+replaces the defaults; `uri_override={}` disables all overrides. Existing schemes
+can be replaced too, e.g. a `"model://"` callback could resolve models from an
+application-specific directory. Callbacks that call the resolver again should
+remove their own prefix or use an empty mapping to avoid recursion.
 
 ## Command Line usage
 
@@ -76,21 +105,14 @@ use working-directory or robot overrides.
 resolve-robotics-uri-py package://iCub/robots/iCubGazeboV2_7/model.urdf
 ~~~
 
-Relative file paths now use robot-specific lookup by default:
+Use an explicit `robot://` URI for robot-specific lookup:
 
 ```bash
-resolve-robotics-uri-py config/controller.ini
-resolve-robotics-uri-py --package-name ControlLib config/controller.ini
+resolve-robotics-uri-py robot://config/controller.ini
+resolve-robotics-uri-py --default-package-name ControlLib robot://config/controller.ini
 ```
 
-The first command searches the working directory and robot overrides only. The
-second also searches the package default. Explicit `package://` inputs delegate
-to the original URI resolver; `file:` and `model:` URIs and absolute paths retain
-their existing behavior. To use the original resolver for every input:
-
-```bash
-resolve-robotics-uri-py --do-not-use-robot-specific-resolve config/controller.ini
-```
+The default package name is optional; without it, the package-default lookup is skipped.
 
 For example,  on bash this can be used to easily convert the a urdf specified via `package://` to an sdf (assuming you have Gazebo installed), using the [backtick operator](https://www.redhat.com/sysadmin/backtick-operator-vs-parens):
 ~~~bash

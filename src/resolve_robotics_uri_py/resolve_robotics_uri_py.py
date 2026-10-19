@@ -5,7 +5,7 @@ import sys
 import sysconfig
 import warnings
 from functools import lru_cache
-from typing import Union, Iterable
+from typing import Callable, Iterable, Mapping, Union
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
@@ -129,6 +129,8 @@ def resolve_robotics_uri(
     package_dirs: Union[list[str], None] = None,
     exclude_python_prefix: bool = False,
     exclude_env_vars: Union[list[str], None] = None,
+    uri_override: Union[Mapping[str, Callable[..., pathlib.Path]], None] = None,
+    default_package_name: str = "",
 ) -> pathlib.Path:
     """
     Resolve a robotics URI to an absolute filename.
@@ -139,6 +141,13 @@ def resolve_robotics_uri(
         exclude_python_prefix: If True, do not search Python installation prefixes.
         exclude_env_vars: Optional list of environment variable names to exclude from
             the default search path list.
+        uri_override: URI prefix to resolver callback mapping. None enables the
+            default robot:// handler; an empty mapping disables overrides. The
+            longest matching prefix wins. Callbacks receive the full URI and
+            package_dirs, exclude_python_prefix, exclude_env_vars, default_package_name
+            as keyword arguments. Their result or exception is returned directly.
+        default_package_name: Optional default package for robot:// resolution,
+            also available to other URI override callbacks.
 
     Returns:
         The absolute filename corresponding to the URI.
@@ -155,6 +164,21 @@ def resolve_robotics_uri(
         `package://ModelName/meshes/mesh.stl`, and the actual file is in
         `/usr/local/share/ModelName/meshes/mesh.stl`, the `package_dirs` should contain `/usr/local/share`.
     """
+    overrides = DEFAULT_URI_OVERRIDE if uri_override is None else uri_override
+    if any(
+        not prefix or not callable(callback)
+        for prefix, callback in overrides.items()
+    ):
+        raise ValueError("URI overrides require nonempty prefixes and callable handlers")
+    prefix = max((p for p in overrides if uri.startswith(p)), key=len, default=None)
+    if prefix is not None:
+        return overrides[prefix](
+            uri,
+            package_dirs=package_dirs,
+            exclude_python_prefix=exclude_python_prefix,
+            exclude_env_vars=exclude_env_vars,
+            default_package_name=default_package_name,
+        )
     package_dirs = package_dirs if isinstance(package_dirs, list) else [package_dirs]
 
     # Remove empty strings and None entries from the list
@@ -262,34 +286,15 @@ def clear_robot_specific_file_cache() -> None:
     _robot_directories.cache_clear()
 
 
-def resolve_robot_specific_file(
-    relative_path: str,
-    package_name: str = "",
+def _resolve_robot_uri(
+    uri: str,
+    default_package_name: str = "",
     package_dirs: Union[list[str], None] = None,
     exclude_python_prefix: bool = False,
     exclude_env_vars: Union[list[str], None] = None,
 ) -> pathlib.Path:
-    """Find a regular file in the working directory, robot overrides, or a package.
-
-    Robot overrides live at <search-root>/<any-package>/robots/<robot>/<relative_path>.
-    ACTIVE_ROBOT_NAME selects the robot, falling back to a nonempty YARP_ROBOT_NAME.
-    Search options have the same meaning as in resolve_robotics_uri. Within each
-    lookup tier, canonical paths are sorted and the first match is returned; multiple
-    matches emit a warning. Package-directory discovery is cached per search-root set;
-    call clear_robot_specific_file_cache after installing new override packages.
-
-    A package:// input delegates directly to resolve_robotics_uri, forwarding all
-    search options and ignoring package_name and robot selection. If package_name
-    is omitted or empty, skip the package-default lookup entirely.
-
-    Returns an absolute pathlib.Path. Raises FileNotFoundError if no file matches,
-    or ValueError for an empty, absolute, other URI, or parent-traversing path,
-    or for a nonempty package/robot name that is not a single directory component.
-    """
-    if relative_path.startswith("package://"):
-        return resolve_robotics_uri(
-            relative_path, package_dirs, exclude_python_prefix, exclude_env_vars
-        )
+    """Default robot:// callback: working directory, robot override, package default."""
+    relative_path = uri[len("robot://") :]
     path = pathlib.Path(relative_path)
     if (
         not relative_path
@@ -306,8 +311,8 @@ def resolve_robot_specific_file(
         if not name or name in (".", "..") or any(c in name for c in "/\\:"):
             raise ValueError(f"{label} must be a single directory component")
 
-    if package_name:
-        check_name(package_name, "package_name")
+    if default_package_name:
+        check_name(default_package_name, "default_package_name")
     if path.is_file():
         return path.resolve()
 
@@ -345,35 +350,33 @@ def resolve_robot_specific_file(
         )
         if result is not None:
             return result
-    if package_name:
-        result = find(root / package_name / path for root in roots)
+    if default_package_name:
+        result = find(root / default_package_name / path for root in roots)
         if result is not None:
             return result
     raise FileNotFoundError(
         f"resolve-robotics-uri-py: No robot-specific or default file '{relative_path}' "
-        f"found for package '{package_name}'"
+        f"found for package '{default_package_name}'"
     )
+
+
+DEFAULT_URI_OVERRIDE = {"robot://": _resolve_robot_uri}
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Utility resolve a robotics URI ({}) to an absolute filename.".format(
-            ", ".join(f"{scheme}://" for scheme in SupportedSchemes)
+            ", ".join(f"{scheme}://" for scheme in SupportedSchemes | {"robot"})
         )
     )
     parser.add_argument(
         "uri", metavar="URI", type=str, help="URI or relative file path to resolve"
     )
     parser.add_argument(
-        "--package-name",
+        "--default-package-name",
         default="",
         metavar="NAME",
-        help="Package providing a default for a relative file path",
-    )
-    parser.add_argument(
-        "--do-not-use-robot-specific-resolve",
-        action="store_true",
-        help="Use the original URI resolver without robot-specific lookup",
+        help="Package providing a default for a robot:// URI",
     )
     parser.add_argument(
         "--package_dirs",
@@ -405,16 +408,9 @@ def main():
             exclude_python_prefix=args.exclude_python_prefix,
             exclude_env_vars=list(exclude_env_vars),
         )
-        if (
-            args.do_not_use_robot_specific_resolve
-            or args.uri.startswith(("file:", "model:"))
-            or pathlib.Path(args.uri).is_absolute()
-        ):
-            result = resolve_robotics_uri(args.uri, **search_options)
-        else:
-            result = resolve_robot_specific_file(
-                args.uri, args.package_name, **search_options
-            )
+        result = resolve_robotics_uri(
+            args.uri, default_package_name=args.default_package_name, **search_options
+        )
     except (FileNotFoundError, ValueError) as e:
         print(e, file=sys.stderr)
         sys.exit(1)
