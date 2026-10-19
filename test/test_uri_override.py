@@ -100,7 +100,7 @@ def test_default_override_mappings_are_independent(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "uri", ["robot://local.ini", "custom://local.ini", "https://example.org/file"]
+    "uri", ["robot://local.ini", "custom://local.ini", "https://example.org/file", "https:resource"]
 )
 def test_unsupported_uri_is_rejected_before_path_resolution(uri):
     # Python 3.9 on Windows raises WinError 123 when resolving a URI as a path.
