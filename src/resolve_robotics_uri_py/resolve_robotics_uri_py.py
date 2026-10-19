@@ -1,6 +1,7 @@
 import argparse
 import os
 import pathlib
+import re
 import sys
 import sysconfig
 import warnings
@@ -171,7 +172,7 @@ def resolve_robotics_uri(
     if any(
         not isinstance(scheme, str)
         or not scheme
-        or urlparse(scheme + ":").scheme != scheme
+        or re.fullmatch(r"[a-z][a-z0-9+.-]*", scheme) is None
         or not callable(callback)
         for scheme, callback in overrides.items()
     ):
