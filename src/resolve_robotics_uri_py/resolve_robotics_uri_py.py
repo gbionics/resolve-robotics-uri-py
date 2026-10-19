@@ -189,9 +189,17 @@ def resolve_robotics_uri(
     # If the URI has no scheme, use by default file:// which maps the resolved input
     # path to a URI with empty authority. Leave explicit URI schemes intact so
     # unsupported schemes are rejected before Windows filesystem normalization.
-    if "://" not in uri and not any(
-        uri.startswith(scheme) for scheme in SupportedSchemes
+    parsed_uri = urlparse(uri)
+    is_windows_drive_path = bool(pathlib.PureWindowsPath(uri).drive)
+    if (
+        parsed_uri.scheme
+        and parsed_uri.scheme not in SupportedSchemes
+        and not is_windows_drive_path
     ):
+        msg = "resolve-robotics-uri-py: Passed URI '{}' use non-supported scheme '{}'"
+        raise FileNotFoundError(msg.format(uri, parsed_uri.scheme))
+
+    if not parsed_uri.scheme or is_windows_drive_path:
         uri = pathlib.Path(uri).resolve().as_uri()
 
     # Parse the URI to determine the scheme and path
