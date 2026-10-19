@@ -74,20 +74,20 @@ A callback's failure does not fall back to another handler.
 from pathlib import Path
 from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDES, resolve_robotics_uri
 
-config_root = Path("/opt/my-app/config")
-
-# Resolve config://controller.ini inside the application's config directory.
-def resolve_config(uri, **options):
-    path = config_root / uri[len("config://") :]
+# Resolve home://Documents/notes.txt inside the current user's home directory.
+def resolve_home(uri, **options):
+    path = Path.home() / uri[len("home://") :]
     return resolve_robotics_uri(str(path), uri_overrides={}, **options)
 
+
 absolute_path = resolve_robotics_uri(
-    "config://controller.ini",
-    uri_overrides={**DEFAULT_URI_OVERRIDES, "config://": resolve_config},
+    "home://Documents/notes.txt",
+    uri_overrides={**DEFAULT_URI_OVERRIDES, "home://": resolve_home},
 )
 ```
 
-This adds `config://` while retaining `robot://`. The callback also receives
+This resolves `home://Documents/notes.txt` to `Documents/notes.txt` under the user’s
+home directory, while retaining `robot://`. The callback also receives
 `default_package_name`, so custom overrides can use it for their own fallback logic.
 A runnable version is in [examples/custom_uri_override.py](examples/custom_uri_override.py).
 

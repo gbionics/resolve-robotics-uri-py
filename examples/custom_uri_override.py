@@ -1,4 +1,4 @@
-"""Usage: python custom_uri_override.py CONFIG_ROOT config://controller.ini"""
+"""Usage: python custom_uri_override.py home://Documents/notes.txt"""
 
 import argparse
 from pathlib import Path
@@ -6,21 +6,20 @@ from pathlib import Path
 from resolve_robotics_uri_py import DEFAULT_URI_OVERRIDES, resolve_robotics_uri
 
 
+# Resolve home://Documents/notes.txt inside the current user's home directory.
+def resolve_home(uri, **options):
+    path = Path.home() / uri[len("home://") :]
+    return resolve_robotics_uri(str(path), uri_overrides={}, **options)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("config_root", type=Path)
     parser.add_argument("uri")
     args = parser.parse_args()
-
-    # Resolve config:// URIs relative to an application-specific directory.
-    def resolve_config(uri, **options):
-        path = args.config_root.resolve() / uri[len("config://") :]
-        return resolve_robotics_uri(str(path), uri_overrides={}, **options)
-
     print(
         resolve_robotics_uri(
             args.uri,
-            uri_overrides={**DEFAULT_URI_OVERRIDES, "config://": resolve_config},
+            uri_overrides={**DEFAULT_URI_OVERRIDES, "home://": resolve_home},
         )
     )
 
