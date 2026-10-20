@@ -1,10 +1,12 @@
 import argparse
 import os
 import pathlib
+import re
 import sys
 import sysconfig
 import warnings
-from typing import Union, Iterable
+from functools import lru_cache
+from typing import Callable, Iterable, Mapping, Union
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
@@ -128,6 +130,8 @@ def resolve_robotics_uri(
     package_dirs: Union[list[str], None] = None,
     exclude_python_prefix: bool = False,
     exclude_env_vars: Union[list[str], None] = None,
+    uri_overrides: Union[Mapping[str, Callable[..., pathlib.Path]], None] = None,
+    default_package_name: str = "",
 ) -> pathlib.Path:
     """
     Resolve a robotics URI to an absolute filename.
@@ -138,6 +142,14 @@ def resolve_robotics_uri(
         exclude_python_prefix: If True, do not search Python installation prefixes.
         exclude_env_vars: Optional list of environment variable names to exclude from
             the default search path list.
+        uri_overrides: URI scheme name to resolver callback mapping. None enables the
+            default robot:// handler; an empty mapping disables overrides. The
+            scheme is matched exactly, without ":" or "//" in the key. Callbacks
+            receive the full URI and package_dirs, exclude_python_prefix,
+            exclude_env_vars, default_package_name as keyword arguments. Their
+            result or exception is returned directly.
+        default_package_name: Optional default package for robot:// resolution,
+            also available to other URI override callbacks.
 
     Returns:
         The absolute filename corresponding to the URI.
@@ -154,6 +166,25 @@ def resolve_robotics_uri(
         `package://ModelName/meshes/mesh.stl`, and the actual file is in
         `/usr/local/share/ModelName/meshes/mesh.stl`, the `package_dirs` should contain `/usr/local/share`.
     """
+    parsed_uri = urlparse(uri)
+    is_windows_drive_path = bool(pathlib.PureWindowsPath(uri).drive)
+    overrides = get_default_uri_overrides() if uri_overrides is None else uri_overrides
+    if any(
+        not isinstance(scheme, str)
+        or not scheme
+        or re.fullmatch(r"[a-z][a-z0-9+.-]*", scheme) is None
+        or not callable(callback)
+        for scheme, callback in overrides.items()
+    ):
+        raise ValueError("URI overrides require lowercase scheme names and callable handlers")
+    if not is_windows_drive_path and parsed_uri.scheme in overrides:
+        return overrides[parsed_uri.scheme](
+            uri,
+            package_dirs=package_dirs,
+            exclude_python_prefix=exclude_python_prefix,
+            exclude_env_vars=exclude_env_vars,
+            default_package_name=default_package_name,
+        )
     package_dirs = package_dirs if isinstance(package_dirs, list) else [package_dirs]
 
     # Remove empty strings and None entries from the list
@@ -162,8 +193,17 @@ def resolve_robotics_uri(
     )
 
     # If the URI has no scheme, use by default file:// which maps the resolved input
-    # path to a URI with empty authority
-    if not any(uri.startswith(scheme) for scheme in SupportedSchemes):
+    # path to a URI with empty authority. Leave explicit URI schemes intact so
+    # unsupported schemes are rejected before Windows filesystem normalization.
+    if (
+        parsed_uri.scheme
+        and parsed_uri.scheme not in SupportedSchemes
+        and not is_windows_drive_path
+    ):
+        msg = "resolve-robotics-uri-py: Passed URI '{}' use non-supported scheme '{}'"
+        raise FileNotFoundError(msg.format(uri, parsed_uri.scheme))
+
+    if not parsed_uri.scheme or is_windows_drive_path:
         uri = pathlib.Path(uri).resolve().as_uri()
 
     # Parse the URI to determine the scheme and path
@@ -239,13 +279,122 @@ def resolve_robotics_uri(
         return pathlib.Path(model_filenames[0]).resolve()
 
 
+@lru_cache(maxsize=128)
+def _robot_directories(
+    search_roots: tuple[pathlib.Path, ...],
+) -> tuple[pathlib.Path, ...]:
+    directories = set()
+    for root in search_roots:
+        try:
+            for package in root.iterdir():
+                robots = package / "robots"
+                if package.is_dir() and robots.is_dir():
+                    directories.add(robots.resolve())
+        except OSError:
+            # Missing or unreadable roots cannot provide an override.
+            continue
+    return tuple(sorted(directories))
+
+
+def clear_robot_specific_file_cache() -> None:
+    """Refresh discovery after installing new packages or robots directories."""
+    _robot_directories.cache_clear()
+
+
+def _resolve_robot_uri(
+    uri: str,
+    default_package_name: str = "",
+    package_dirs: Union[list[str], None] = None,
+    exclude_python_prefix: bool = False,
+    exclude_env_vars: Union[list[str], None] = None,
+) -> pathlib.Path:
+    """Default robot:// callback: working directory, robot override, package default."""
+    relative_path = uri.partition(":")[2].removeprefix("//")
+    path = pathlib.Path(relative_path)
+    if (
+        not relative_path
+        or path.is_absolute()
+        or path.anchor
+        or ".." in path.parts
+        or urlparse(relative_path).scheme
+    ):
+        raise ValueError(
+            "relative_path must be a nonempty relative filesystem path without '..' or a URI scheme"
+        )
+
+    def check_name(name: str, label: str) -> None:
+        if not name or name in (".", "..") or any(c in name for c in "/\\:"):
+            raise ValueError(f"{label} must be a single directory component")
+
+    if default_package_name:
+        check_name(default_package_name, "default_package_name")
+    if path.is_file():
+        return path.resolve()
+
+    robot = os.getenv("ACTIVE_ROBOT_NAME") or os.getenv("YARP_ROBOT_NAME")
+    if robot:
+        check_name(robot, "robot name")
+    entries = package_dirs if isinstance(package_dirs, list) else [package_dirs]
+    roots = set(get_default_search_paths(exclude_python_prefix, exclude_env_vars))
+    roots.update(
+        pathlib.Path(directory).expanduser().resolve()
+        for entry in entries
+        if entry
+        for directory in entry.split(os.pathsep)
+        if directory
+        if pathlib.Path(directory).expanduser().is_dir()
+    )
+    roots = tuple(sorted(roots))
+
+    def find(candidates):
+        matches = sorted(
+            {candidate.resolve() for candidate in candidates if candidate.is_file()}
+        )
+        if len(matches) > 1:
+            warnings.warn(
+                "resolve-robotics-uri-py: Multiple files ({}) found for robot-specific "
+                "file '{}', returning the first one.".format(
+                    pathlist_list_to_string(matches), relative_path
+                )
+            )
+        return matches[0] if matches else None
+
+    if robot:
+        result = find(
+            directory / robot / path for directory in _robot_directories(roots)
+        )
+        if result is not None:
+            return result
+    if default_package_name:
+        result = find(root / default_package_name / path for root in roots)
+        if result is not None:
+            return result
+    raise FileNotFoundError(
+        f"resolve-robotics-uri-py: No robot-specific or default file '{relative_path}' "
+        f"found for package '{default_package_name}'"
+    )
+
+
+def get_default_uri_overrides() -> dict[str, Callable[..., pathlib.Path]]:
+    """Return fresh default URI callbacks keyed by lowercase scheme names."""
+    return {"robot": _resolve_robot_uri}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Utility resolve a robotics URI ({}) to an absolute filename.".format(
-            ", ".join(f"{scheme}://" for scheme in SupportedSchemes)
+            ", ".join(f"{scheme}://" for scheme in SupportedSchemes | {"robot"})
         )
     )
-    parser.add_argument("uri", metavar="URI", type=str, help="URI to resolve")
+    parser.add_argument(
+        "uri", metavar="URI", type=str, help="URI or relative file path to resolve"
+    )
+    parser.add_argument(
+        "--default-package-name",
+        default="",
+        metavar="NAME",
+        help="Package providing a default for a robot:// URI",
+    )
     parser.add_argument(
         "--package_dirs",
         metavar="PATH",
@@ -271,13 +420,15 @@ def main():
     exclude_env_vars = set(args.exclude_env_var)
 
     try:
-        result = resolve_robotics_uri(
-            args.uri,
-            args.package_dirs,
+        search_options = dict(
+            package_dirs=args.package_dirs,
             exclude_python_prefix=args.exclude_python_prefix,
             exclude_env_vars=list(exclude_env_vars),
         )
-    except FileNotFoundError as e:
+        result = resolve_robotics_uri(
+            args.uri, default_package_name=args.default_package_name, **search_options
+        )
+    except (FileNotFoundError, ValueError) as e:
         print(e, file=sys.stderr)
         sys.exit(1)
 
