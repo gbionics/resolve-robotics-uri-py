@@ -18,7 +18,7 @@ For `file://` URIs, the path is converted to a local filesystem path and checked
 
 ## `package://` and `model://` Resolution
 
-For scoped URIs, the resolver strips the scheme and searches for the remaining relative path under a set of candidate directories.
+For scoped URIs, the resolver strips the scheme and searches for the remaining relative path under an ordered list of candidate directories.
 
 The search order is:
 
@@ -39,6 +39,9 @@ The resolver reads these environment variables by default:
 - `ROS_PACKAGE_PATH`
 - `SDF_PATH`
 - `RRU_ADDITIONAL_PATHS`
+
+Variables are searched in the order listed above. Paths within each variable retain
+their listed order. Duplicate search paths keep their first occurrence.
 
 Each variable may contain multiple paths separated by `os.pathsep`.
 
@@ -66,7 +69,7 @@ You can disable Python-prefix-based search by passing `exclude_python_prefix=Tru
 
 ## Explicit Additional Directories
 
-The `package_dirs` argument adds extra directories to the search set. Entries may be provided as a list or as a separator-delimited string.
+The `package_dirs` argument adds extra directories in their supplied order to the search list. Entries may be provided as a list or as a separator-delimited string.
 
 These directories are searched in addition to the default environment-based paths and Python-prefix-based paths.
 

@@ -34,7 +34,7 @@ SupportedSchemes = {"file", "package", "model"}
 # * ROS_PACKAGE_PATH:         Used in ROS1
 # * SDF_PATH:                 Used in sdformat
 #
-SupportedEnvVars = {
+_SupportedEnvVarOrder = (
     "AMENT_PREFIX_PATH",
     "GAZEBO_MODEL_PATH",
     "GZ_SIM_RESOURCE_PATH",
@@ -42,7 +42,8 @@ SupportedEnvVars = {
     "ROS_PACKAGE_PATH",
     "SDF_PATH",
     "RRU_ADDITIONAL_PATHS",
-}
+)
+SupportedEnvVars = set(_SupportedEnvVarOrder)
 
 
 # Function inspired from https://github.com/ami-iit/robot-log-visualizer/pull/51
@@ -57,7 +58,7 @@ def get_search_paths_from_envs(env_list: Iterable[str]) -> list[pathlib.Path]:
     ]
 
     # Resolve and remove duplicate paths
-    search_paths = list({path.resolve() for path in search_paths})
+    search_paths = list(dict.fromkeys(path.resolve() for path in search_paths))
 
     # Keep only existing paths
     existing_search_paths = [path for path in search_paths if path.is_dir()]
@@ -79,15 +80,15 @@ def get_default_search_paths(
     exclude_env_vars: Union[list[str], None] = None,
 ) -> list[pathlib.Path]:
     exclude_env_vars = set(exclude_env_vars or [])
-    search_env_vars = SupportedEnvVars - exclude_env_vars
+    search_env_vars = [env for env in _SupportedEnvVarOrder if env not in exclude_env_vars]
     search_paths = get_search_paths_from_envs(search_env_vars)
 
     if not exclude_python_prefix:
-        search_prefixes = {pathlib.Path(sys.prefix).resolve()}
+        search_prefixes = [pathlib.Path(sys.prefix).resolve()]
         sysconfig_data_prefix = sysconfig.get_path("data")
 
         if sysconfig_data_prefix:
-            search_prefixes.add(pathlib.Path(sysconfig_data_prefix).resolve())
+            search_prefixes.append(pathlib.Path(sysconfig_data_prefix).resolve())
 
         # Avoid adding duplicate paths when sys.prefix and sysconfig.get_path("data")
         # map to the same location.
@@ -189,7 +190,9 @@ def resolve_robotics_uri(
 
     # Remove empty strings and None entries from the list
     package_dirs = list(
-        {p for entry in package_dirs if entry for p in entry.split(os.pathsep) if p}
+        dict.fromkeys(
+            p for entry in package_dirs if entry for p in entry.split(os.pathsep) if p
+        )
     )
 
     # If the URI has no scheme, use by default file:// which maps the resolved input
@@ -245,13 +248,13 @@ def resolve_robotics_uri(
     model_filenames = []
 
     # Search the resource in the path from the env variables
-    for folder in set(
-        get_default_search_paths(exclude_python_prefix, exclude_env_vars)
-    ) | {
-        path
+    search_paths = get_default_search_paths(exclude_python_prefix, exclude_env_vars)
+    search_paths.extend(
+        path.resolve()
         for directory in package_dirs
         if directory and (path := pathlib.Path(directory).expanduser()).exists()
-    }:
+    )
+    for folder in dict.fromkeys(search_paths):
         # Join the folder from environment variable and the URI path
         candidate_file_name = folder / uri_path
 
