@@ -3,7 +3,11 @@ build-backend = "setuptools.build_meta"
 requires = [
     "wheel",
     "setuptools>=45",
+    "setuptools_scm[toml]>=6.2",
 ]
+
+[tool.setuptools_scm]
+local_scheme = "dirty-tag"
 
 [tool.black]
 line-length = 88
