@@ -101,9 +101,27 @@ the resolver, remove the matching scheme override (or disable overrides) to avoi
 # Robot-specific files via `robot://`
 
 `robot://<relative-path>` resolves a robot-specific file. The optional default
-package is supplied separately (`default_package_name`).
+package can be supplied separately (`default_package_name`).
 The URI authority and path together form the relative path, so
 `robot://config/controller.ini` means `config/controller.ini`.
+
+The default package can also be embedded in the URI:
+
+```text
+robot://config/controller.ini?default_package=ControlLib
+```
+
+The first `default_package` query parameter takes precedence over the API or CLI
+option. An empty value (including a bare `default_package` key) disables the
+package fallback. Unknown parameters are ignored. Query names and values use
+[form encoding](https://url.spec.whatwg.org/#application/x-www-form-urlencoded):
+`&` separates parameters, the first `=` separates name and value, `+` means a
+space, and `%HH` escapes are decoded (use `%2B` for a literal plus). Decoded
+package names must still be single directory components. The query and optional
+fragment are excluded from the resource path, following
+[RFC 3986 §3.4](https://www.rfc-editor.org/rfc/rfc3986#section-3.4).
+The working-directory and robot-specific files still take precedence over the
+package fallback. Quote URIs in shell commands, especially when they contain `&`.
 
 1. Return the regular file relative to the working directory, if present.
 2. Select the robot from nonempty `ACTIVE_ROBOT_NAME`, falling back to nonempty

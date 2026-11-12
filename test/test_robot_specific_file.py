@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from resolve_robotics_uri_py import (
@@ -238,3 +240,87 @@ def test_no_package_skips_default(layout, monkeypatch):
     assert resolve_robot_uri("config/controller.ini", **options) == override
     local = write(cwd / "config/controller.ini")
     assert resolve_robot_uri("config/controller.ini", **options) == local
+
+
+@pytest.mark.parametrize(
+    "query,package",
+    [
+        ("default_package=ControlLib", "ControlLib"),
+        ("ignored=x&default_package=ControlLib&other=y", "ControlLib"),
+        ("default%5fpackage=%43ontrolLib", "ControlLib"),
+        ("default_package=Control+Lib", "Control Lib"),
+        ("default_package=Control%20Lib", "Control Lib"),
+        ("default_package=Control%2bLib", "Control+Lib"),
+        ("default_package=Control%26%3D%23%3FLib", "Control&=#?Lib"),
+        ("default_package=Control%25Lib", "Control%Lib"),
+        ("default_package=Control%ZZLib", "Control%ZZLib"),
+        ("default_package=ControlLib&default_package=Missing", "ControlLib"),
+        ("default_package=ControlLib#fragment?default_package=Missing", "ControlLib"),
+        ("unrelated=value", "ArgumentPackage"),
+        ("", "ArgumentPackage"),
+    ],
+)
+def test_default_package_query(layout, query, package):
+    root, _ = layout
+    # '?' is not a portable directory character on Windows.
+    if "?" in package and sys.platform == "win32":
+        pytest.skip("Package contains a Windows-reserved character")
+    expected = write(root / package / "config/controller.ini")
+    assert (
+        resolve_robot_uri(
+            "config/controller.ini?" + query,
+            "ArgumentPackage",
+            package_dirs=[str(root)],
+            exclude_python_prefix=True,
+        )
+        == expected
+    )
+
+
+def test_query_lookup_precedence(layout, monkeypatch):
+    root, cwd = layout
+    default = write(root / "ControlLib/config/controller.ini")
+    options = dict(package_dirs=[str(root)], exclude_python_prefix=True)
+    uri = "config/controller.ini?default_package=ControlLib"
+    assert resolve_robot_uri(uri, **options) == default
+    monkeypatch.setenv("ACTIVE_ROBOT_NAME", "MyRobot")
+    override = write(root / "Overrides/robots/MyRobot/config/controller.ini")
+    clear_robot_specific_file_cache()
+    assert resolve_robot_uri(uri, **options) == override
+    local = write(cwd / "config/controller.ini")
+    assert resolve_robot_uri(uri, **options) == local
+    # A fragment cannot inject a query parameter.
+    assert (
+        resolve_robot_uri("config/controller.ini#?default_package=Missing", **options)
+        == local
+    )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "default_package=",
+        "default_package",
+        "default_package=&default_package=ControlLib",
+    ],
+)
+def test_empty_query_package_disables_default(layout, query):
+    root, _ = layout
+    write(root / "ControlLib/config/controller.ini")
+    with pytest.raises(FileNotFoundError):
+        resolve_robot_uri(
+            "config/controller.ini?" + query,
+            "ControlLib",
+            package_dirs=[str(root)],
+            exclude_python_prefix=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "package", ["..", "%2e%2e", "a%2Fb", "a%5Cb", "a%3Ab", "a%00b"]
+)
+def test_invalid_query_package(layout, package):
+    _, cwd = layout
+    write(cwd / "config/controller.ini")
+    with pytest.raises(ValueError):
+        resolve_robot_uri("config/controller.ini?default_package=" + package)
