@@ -66,18 +66,6 @@ The default package can also be embedded in the URI:
 robot://config/controller.ini?default_package=ControlLib
 ```
 
-The first `default_package` query parameter takes precedence over the API or CLI
-option. An empty value (including a bare `default_package` key) disables the
-package fallback. Unknown parameters are ignored. Query names and values use
-[form encoding](https://url.spec.whatwg.org/#application/x-www-form-urlencoded):
-`&` separates parameters, the first `=` separates name and value, `+` means a
-space, and `%HH` escapes are decoded (use `%2B` for a literal plus). Decoded
-package names must still be single directory components. The query and optional
-fragment are excluded from the resource path, following
-[RFC 3986 §3.4](https://www.rfc-editor.org/rfc/rfc3986#section-3.4).
-The working-directory and robot-specific files still take precedence over the
-package fallback. Quote URIs in shell commands, especially when they contain `&`.
-
 Results are absolute paths to regular files. Discovery of `robots` directories is
 cached; see [the search specification](rru_spec.md) for refresh and error behavior.
 
