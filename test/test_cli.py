@@ -45,6 +45,21 @@ def test_cli(tmp_path):
     result = run("--default-package-name", "ControlLib", "robot://config/controller.ini")
     assert result.returncode == 0
     assert result.stdout.strip() == str(default)
+    result = run("robot://config/controller.ini?default_package=ControlLib")
+    assert result.returncode == 0
+    assert result.stdout.strip() == str(default)
+    result = run(
+        "--default-package-name",
+        "Missing",
+        "robot://config/controller.ini?default_package=%43ontrolLib",
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == str(default)
+    result = run("robot://config/controller.ini?default_package=ControlLib&typo=ignored")
+    assert result.returncode == 0
+    assert result.stdout.strip() == str(default)
+    assert "Ignoring unsupported robot:// query parameter 'typo'" in result.stderr
+    assert run("robot://config/controller.ini?default_package=a%2Fb").returncode == 1
     assert run("config/controller.ini").returncode == 1
     for path in (
         str(default),

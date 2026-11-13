@@ -60,6 +60,12 @@ Set `ACTIVE_ROBOT_NAME=MyRobot` (or `YARP_ROBOT_NAME` as a fallback). The lookup
 2. The robot-specific file under any immediate package's `robots/<robot>` directory.
 3. The default package file, if a default package name was supplied.
 
+The default package can also be embedded in the URI:
+
+```text
+robot://config/controller.ini?default_package=ControlLib
+```
+
 Results are absolute paths to regular files. Discovery of `robots` directories is
 cached; see [the search specification](rru_spec.md) for refresh and error behavior.
 
@@ -113,6 +119,7 @@ Use an explicit `robot://` URI for robot-specific lookup:
 ```bash
 resolve-robotics-uri-py robot://config/controller.ini
 resolve-robotics-uri-py --default-package-name ControlLib robot://config/controller.ini
+resolve-robotics-uri-py "robot://config/controller.ini?default_package=ControlLib"
 ```
 
 The default package name is optional; without it, the package-default lookup is skipped.

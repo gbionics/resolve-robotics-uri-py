@@ -7,7 +7,7 @@ import sysconfig
 import warnings
 from functools import lru_cache
 from typing import Callable, Iterable, Mapping, Union
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlparse
 from urllib.request import url2pathname
 
 # =====================
@@ -150,7 +150,8 @@ def resolve_robotics_uri(
             exclude_env_vars, default_package_name as keyword arguments. Their
             result or exception is returned directly.
         default_package_name: Optional default package for robot:// resolution,
-            also available to other URI override callbacks.
+            overridden by the first default_package query parameter in a robot:// URI.
+            Also available to other URI override callbacks.
 
     Returns:
         The absolute filename corresponding to the URI.
@@ -312,7 +313,20 @@ def _resolve_robot_uri(
     exclude_env_vars: Union[list[str], None] = None,
 ) -> pathlib.Path:
     """Default robot:// callback: working directory, robot override, package default."""
-    relative_path = uri.partition(":")[2].removeprefix("//")
+    # Split URI components before form decoding so encoded delimiters stay data.
+    resource = uri.partition(":")[2].removeprefix("//").partition("#")[0]
+    relative_path, _, query = resource.partition("?")
+    default_package_found = False
+    for name, value in parse_qsl(query, keep_blank_values=True):
+        if name != "default_package":
+            warnings.warn(
+                f"resolve-robotics-uri-py: Ignoring unsupported robot:// query parameter {name!r}; "
+                "supported query parameter: 'default_package'.",
+                stacklevel=2,
+            )
+        elif not default_package_found:
+            default_package_name = value
+            default_package_found = True
     path = pathlib.Path(relative_path)
     if (
         not relative_path
@@ -326,7 +340,7 @@ def _resolve_robot_uri(
         )
 
     def check_name(name: str, label: str) -> None:
-        if not name or name in (".", "..") or any(c in name for c in "/\\:"):
+        if not name or name in (".", "..") or any(c in name for c in "/\\:\0"):
             raise ValueError(f"{label} must be a single directory component")
 
     if default_package_name:
