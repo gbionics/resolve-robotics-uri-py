@@ -316,10 +316,17 @@ def _resolve_robot_uri(
     # Split URI components before form decoding so encoded delimiters stay data.
     resource = uri.partition(":")[2].removeprefix("//").partition("#")[0]
     relative_path, _, query = resource.partition("?")
+    default_package_found = False
     for name, value in parse_qsl(query, keep_blank_values=True):
-        if name == "default_package":
+        if name != "default_package":
+            warnings.warn(
+                f"resolve-robotics-uri-py: Ignoring unsupported robot:// query parameter {name!r}; "
+                "supported query parameter: 'default_package'.",
+                stacklevel=2,
+            )
+        elif not default_package_found:
             default_package_name = value
-            break
+            default_package_found = True
     path = pathlib.Path(relative_path)
     if (
         not relative_path

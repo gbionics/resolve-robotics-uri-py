@@ -113,7 +113,8 @@ robot://config/controller.ini?default_package=ControlLib
 
 The first `default_package` query parameter takes precedence over the API or CLI
 option. An empty value (including a bare `default_package` key) disables the
-package fallback. Unknown parameters are ignored. Query names and values use
+package fallback. Unknown parameters are ignored with a warning naming each unsupported parameter,
+including parameters after `default_package`. Query names and values use
 [form encoding](https://url.spec.whatwg.org/#application/x-www-form-urlencoded):
 `&` separates parameters, the first `=` separates name and value, `+` means a
 space, and `%HH` escapes are decoded (use `%2B` for a literal plus). Decoded

@@ -1,4 +1,5 @@
 import sys
+import warnings
 
 import pytest
 
@@ -246,7 +247,6 @@ def test_no_package_skips_default(layout, monkeypatch):
     "query,package",
     [
         ("default_package=ControlLib", "ControlLib"),
-        ("ignored=x&default_package=ControlLib&other=y", "ControlLib"),
         ("default%5fpackage=%43ontrolLib", "ControlLib"),
         ("default_package=Control+Lib", "Control Lib"),
         ("default_package=Control%20Lib", "Control Lib"),
@@ -256,7 +256,6 @@ def test_no_package_skips_default(layout, monkeypatch):
         ("default_package=Control%ZZLib", "Control%ZZLib"),
         ("default_package=ControlLib&default_package=Missing", "ControlLib"),
         ("default_package=ControlLib#fragment?default_package=Missing", "ControlLib"),
-        ("unrelated=value", "ArgumentPackage"),
         ("", "ArgumentPackage"),
     ],
 )
@@ -324,3 +323,50 @@ def test_invalid_query_package(layout, package):
     write(cwd / "config/controller.ini")
     with pytest.raises(ValueError):
         resolve_robot_uri("config/controller.ini?default_package=" + package)
+
+
+@pytest.mark.parametrize(
+    "query,unsupported",
+    [
+        ("typo=ControlLib", ["typo"]),
+        ("unknown=x&default_package=ControlLib", ["unknown"]),
+        ("default_package=ControlLib&unknown=x", ["unknown"]),
+        ("first=x&default_package=ControlLib&second=y", ["first", "second"]),
+        ("default_package=ControlLib&default_package=Missing&unknown=x", ["unknown"]),
+        ("default%5fpackage%5fname=ControlLib", ["default_package_name"]),
+        ("unknown", ["unknown"]),
+        ("=value", [""]),
+    ],
+)
+def test_unsupported_query_parameters_warn(layout, query, unsupported):
+    root, _ = layout
+    expected = write(root / "ControlLib/config/controller.ini")
+    with pytest.warns(UserWarning) as caught:
+        result = resolve_robot_uri(
+            "config/controller.ini?" + query,
+            "ControlLib",
+            package_dirs=[str(root)],
+            exclude_python_prefix=True,
+        )
+    assert result == expected
+    assert len(caught) == len(unsupported)
+    for warning, name in zip(caught, unsupported):
+        assert f"Ignoring unsupported robot:// query parameter {name!r}" in str(
+            warning.message
+        )
+        assert "supported query parameter: 'default_package'" in str(warning.message)
+
+
+def test_supported_query_parameters_do_not_warn(layout):
+    root, _ = layout
+    expected = write(root / "ControlLib/config/controller.ini")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert (
+            resolve_robot_uri(
+                "config/controller.ini?default%5fpackage=ControlLib&default_package=Missing",
+                package_dirs=[str(root)],
+                exclude_python_prefix=True,
+            )
+            == expected
+        )
